@@ -1,0 +1,10 @@
+{
+  "last_status": "UNKNOWN",
+  "last_check_timestamp": "",
+  "last_notify_timestamp": null,
+  "total_checks": 0,
+  "total_changes": 0,
+  "consecutive_errors": 0,
+  "last_html_hash": null,
+  "heartbeat_counter": 0
+}
