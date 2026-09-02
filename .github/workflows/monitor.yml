@@ -1,0 +1,43 @@
+name: Monitor Upload120
+
+on:
+  repository_dispatch:
+    types: [upload120-monitor]
+  workflow_dispatch:
+
+concurrency:
+  group: upload120-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install requests
+      
+      - name: Run monitor
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python monitor.py
+      
+      - name: Commit state changes
+        run: |
+          git config user.name "Upload120 Bot"
+          git config user.email "bot@upload120.monitor"
+          git add state.json log.json
+          git diff --cached --quiet || git commit -m "[BOT] Estado actualizado - $(date -u +%Y-%m-%d_%H:%M:%S_UTC)"
+          git push
