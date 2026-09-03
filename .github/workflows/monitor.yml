@@ -4,6 +4,15 @@ on:
   repository_dispatch:
     types: [upload120-monitor]
   workflow_dispatch:
+    inputs:
+      force_notify:
+        description: 'Forzar notificacion aunque no haya cambio'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 concurrency:
   group: upload120-monitor
@@ -20,20 +29,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install dependencies
-        run: pip install requests
-      
+        run: |
+          pip install -r requirements.txt
+
       - name: Run monitor
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          FORCE_NOTIFY: ${{ github.event.inputs.force_notify || 'false' }}
         run: python monitor.py
-      
+
       - name: Commit state changes
         run: |
           git config user.name "Upload120 Bot"
