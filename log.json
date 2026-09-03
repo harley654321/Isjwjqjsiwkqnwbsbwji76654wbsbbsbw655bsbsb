@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "timestamp": "2026-09-03T00:02:47.053400+00:00",
+    "status": "ERROR",
+    "detail": "No se pudo obtener la pagina",
+    "html_hash": null,
+    "notified": false,
+    "error": "403 Client Error: Forbidden for url: https://upload120.com/"
+  }
+]

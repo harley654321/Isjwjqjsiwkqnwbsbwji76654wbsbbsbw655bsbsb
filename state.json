@@ -1,10 +1,10 @@
 {
-  "last_status": "UNKNOWN",
-  "last_check_timestamp": "",
+  "last_status": "ERROR",
+  "last_check_timestamp": "2026-09-03T00:02:47.052963+00:00",
   "last_notify_timestamp": null,
-  "total_checks": 0,
-  "total_changes": 0,
-  "consecutive_errors": 0,
+  "total_checks": 1,
+  "total_changes": 1,
+  "consecutive_errors": 1,
   "last_html_hash": null,
-  "heartbeat_counter": 0
+  "heartbeat_counter": 1
 }
