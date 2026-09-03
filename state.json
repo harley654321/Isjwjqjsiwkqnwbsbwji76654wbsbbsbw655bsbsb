@@ -1,10 +1,11 @@
 {
-  "last_status": "ERROR",
-  "last_check_timestamp": "2026-09-03T00:02:47.052963+00:00",
-  "last_notify_timestamp": null,
-  "total_checks": 1,
-  "total_changes": 1,
-  "consecutive_errors": 1,
-  "last_html_hash": null,
-  "heartbeat_counter": 1
+  "last_status": "DOWN",
+  "last_check_timestamp": "2026-09-03T00:20:34.349199+00:00",
+  "last_notify_timestamp": "2026-09-03T00:20:34.349184+00:00",
+  "total_checks": 2,
+  "total_changes": 2,
+  "consecutive_errors": 0,
+  "last_html_hash": "330d4cda401ad8fd",
+  "heartbeat_counter": 2,
+  "last_strategy_used": "cloudscraper"
 }

@@ -6,5 +6,15 @@
     "html_hash": null,
     "notified": false,
     "error": "403 Client Error: Forbidden for url: https://upload120.com/"
+  },
+  {
+    "timestamp": "2026-09-03T00:20:34.349529+00:00",
+    "status": "DOWN",
+    "detail": "Keyword detectado: 'down'",
+    "html_hash": "330d4cda401ad8fd",
+    "notified": true,
+    "error": null,
+    "strategy": "cloudscraper",
+    "force_notify": false
   }
 ]
