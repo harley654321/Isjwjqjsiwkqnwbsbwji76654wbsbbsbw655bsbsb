@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """
-MONITOR UPLOAD120 PRO v3.0 - ADVANCED BYPASS EDITION
+MONITOR UPLOAD120 PRO v3.1 - ADVANCED BYPASS EDITION
 =====================================================
 Sistema de monitoreo con 4 estrategias de bypass anti-bot en cascada:
-1. Headers realistas (requests + Sec-Fetch + sec-ch-ua)
+1. cloudscraper (Cloudflare-specific bypass engine) - MAS EFECTIVA
 2. curl_cffi (TLS fingerprint impersonation - multiple Chrome versions)
-3. cloudscraper (Cloudflare-specific bypass engine)
+3. Headers realistas (requests + Sec-Fetch + sec-ch-ua)
 4. r.jina.ai (servicio proxy gratuito de respaldo)
 
-Mejoras v3:
-- URL de r.jina.ai corregida (preserva https://)
-- cloudscraper como tercera estrategia
-- curl_cffi con fallback de versiones de Chrome
-- Tracking de estrategia usada en log y estado
-- FORCE_NOTIFY funcional desde workflow_dispatch
-- Retry individual por estrategia
+Mejoras v3.1:
+- cloudscraper ahora es Estrategia 1 (es la que funciona)
+- Regex corregido: 'down' ahora requiere contexto (no matchea 'download')
+- Keywords mas precisas para evitar falsos positivos
 - Jitter aleatorio entre estrategias
-- Limpieza de NTFY_TOPIC (sin defaults hardcodeados)
 
 Autor: Lyra | Fecha: 2026-09-02
 """
@@ -46,14 +42,36 @@ class Config:
     RETRY_DELAY_BASE = 2
 
     # Regex de deteccion de mantenimiento/caida
+    # NOTA: 'down' y 'error' son demasiado genericos por si solos.
+    # Se usan patterns mas especificos para evitar falsos positivos.
     MAINTENANCE_KEYWORDS = [
-        r'parcheado', r'parchado', r'metodo.*actualiz', r'parch', r'mantenimiento',
-        r'no disponible', r'buscando.*metodo', r'metodo.*parch', r'actualizando',
-        r'offline', r'down', r'service.*interrupt', r'updating', r'looking for new',
-        r'new method coming', r'temporarily', r'suspended', r'disabled', r'error',
-        r'problema', r'caido', r'fuera de servicio', r'out of service',
-        r'unavailable', r'under maintenance', r'coming soon', r'work in progress',
-        r'en mantenimiento', r'servicio interrumpido', r'no funciona',
+        # Espanol - mantenimiento
+        r'parcheado', r'parchado', r'metodo\s+actualiz\w*',
+        r'parch\w+', r'mantenimiento',
+        r'no\s+disponible', r'buscando\s+metodo', r'metodo\s+parch\w*',
+        r'actualizando',
+        r'problema\s+(con|de|en)', r'fuera\s+de\s+servicio',
+        r'en\s+mantenimiento', r'servicio\s+interrumpido',
+        r'no\s+funciona',
+        # Espanol - caida
+        r'ca[ií]do', r'cay[oó]',
+        # Ingles - mantenimiento
+        r'looking\s+for\s+new\s+method', r'new\s+method\s+coming',
+        r'temporarily\s+unavailable', r'under\s+maintenance',
+        r'service\s+interrup\w*', r'work\s+in\s+progress',
+        r'coming\s+soon',
+        # Ingles - caida (contextos especificos, no sueltos)
+        r'is\s+down', r'site\s+is\s+down', r'server\s+is\s+down',
+        r'currently\s+down', r'went\s+down', r'gone\s+down',
+        r'offline\s+(for|due|while|temporarily)',
+        r'suspended', r'disabled',
+        # Estados de error del servicio (no la palabra 'error' suelta)
+        r'service\s+error', r'server\s+error',
+        r'out\s+of\s+service',
+        r'unavailable',
+        # Actualizaciones / parches
+        r'updating\s+(the\s+)?(service|server|site|method)',
+        r'parch\w*\s+(aplicado|nuevo|pronto|coming)',
     ]
 
     STATE_FILE = "state.json"
@@ -157,35 +175,40 @@ def detect(html: Optional[str]) -> Tuple[str, str, Optional[str]]:
     regex = compile_regex()
     match = regex.search(html)
     if match:
-        return "DOWN", f"Keyword detectado: '{match.group(0)}'", html_hash
+        # Mostrar contexto alrededor del match para debug
+        start = max(0, match.start() - 30)
+        end = min(len(html), match.end() + 30)
+        context = html[start:end].replace('\n', ' ').strip()
+        return "DOWN", f"Keyword detectado: '{match.group(0)}' | Contexto: ...{context}...", html_hash
     return "UP", "Servicio operativo", html_hash
 
-# ============ ESTRATEGIA 1: requests con headers realistas ============
+# ============ ESTRATEGIA 1: cloudscraper (Cloudflare bypass) ============
 
 def fetch_strategy_1() -> Optional[str]:
-    """Estrategia 1: Headers realistas completos de Chrome 128"""
-    headers = {
-        "User-Agent": Config.USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-        "sec-ch-ua": '"Not)A;Brand";v="99", "Google Chrome";v="128", "Chromium";v="128"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    }
-    print(f"[ESTRATEGIA 1] GET {Config.URL} (requests + headers realistas)")
-    resp = requests.get(Config.URL, headers=headers, timeout=Config.TIMEOUT, allow_redirects=True)
-    resp.raise_for_status()
-    print(f"[ESTRATEGIA 1] OK - {resp.status_code}, {len(resp.text)} chars")
-    return resp.text
+    """Estrategia 1: cloudscraper - engine especifico para bypass de Cloudflare"""
+    try:
+        import cloudscraper
+    except ImportError:
+        print("[ESTRATEGIA 1] cloudscraper no instalado. Saltando...")
+        return None
+
+    try:
+        print(f"[ESTRATEGIA 1] GET {Config.URL} (cloudscraper)")
+        scraper = cloudscraper.create_scraper(
+            browser={
+                "browser": "chrome",
+                "platform": "windows",
+                "desktop": True,
+            },
+            delay=10,
+        )
+        resp = scraper.get(Config.URL, timeout=Config.TIMEOUT)
+        resp.raise_for_status()
+        print(f"[ESTRATEGIA 1] OK - {resp.status_code}, {len(resp.text)} chars")
+        return resp.text
+    except Exception as e:
+        print(f"[ESTRATEGIA 1] Fallo: {e}")
+        return None
 
 # ============ ESTRATEGIA 2: curl_cffi (TLS fingerprint impersonation) ============
 
@@ -221,33 +244,32 @@ def fetch_strategy_2() -> Optional[str]:
     print("[ESTRATEGIA 2] Ninguna version de Chrome funciono")
     return None
 
-# ============ ESTRATEGIA 3: cloudscraper (Cloudflare bypass) ============
+# ============ ESTRATEGIA 3: requests con headers realistas ============
 
 def fetch_strategy_3() -> Optional[str]:
-    """Estrategia 3: cloudscraper - engine especifico para bypass de Cloudflare"""
-    try:
-        import cloudscraper
-    except ImportError:
-        print("[ESTRATEGIA 3] cloudscraper no instalado. Saltando...")
-        return None
-
-    try:
-        print(f"[ESTRATEGIA 3] GET {Config.URL} (cloudscraper)")
-        scraper = cloudscraper.create_scraper(
-            browser={
-                "browser": "chrome",
-                "platform": "windows",
-                "desktop": True,
-            },
-            delay=10,
-        )
-        resp = scraper.get(Config.URL, timeout=Config.TIMEOUT)
-        resp.raise_for_status()
-        print(f"[ESTRATEGIA 3] OK - {resp.status_code}, {len(resp.text)} chars")
-        return resp.text
-    except Exception as e:
-        print(f"[ESTRATEGIA 3] Fallo: {e}")
-        return None
+    """Estrategia 3: Headers realistas completos de Chrome 128"""
+    headers = {
+        "User-Agent": Config.USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "sec-ch-ua": '"Not)A;Brand";v="99", "Google Chrome";v="128", "Chromium";v="128"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
+    print(f"[ESTRATEGIA 3] GET {Config.URL} (requests + headers realistas)")
+    resp = requests.get(Config.URL, headers=headers, timeout=Config.TIMEOUT, allow_redirects=True)
+    resp.raise_for_status()
+    print(f"[ESTRATEGIA 3] OK - {resp.status_code}, {len(resp.text)} chars")
+    return resp.text
 
 # ============ ESTRATEGIA 4: r.jina.ai (servicio proxy gratuito) ============
 
@@ -276,9 +298,9 @@ def fetch() -> Tuple[Optional[str], Optional[str]]:
     Retorna (html, strategy_name)
     """
     strategies = [
-        ("requests_headers", fetch_strategy_1),
+        ("cloudscraper", fetch_strategy_1),
         ("curl_cffi", fetch_strategy_2),
-        ("cloudscraper", fetch_strategy_3),
+        ("requests_headers", fetch_strategy_3),
         ("jina_ai", fetch_strategy_4),
     ]
 
@@ -360,7 +382,7 @@ def notify_heartbeat(state: dict):
 
 def main():
     print("=" * 60)
-    print(f"[START] Upload120 Monitor Pro v3.0 - {now_iso()}")
+    print(f"[START] Upload120 Monitor Pro v3.1 - {now_iso()}")
     print(f"[CONFIG] FORCE_NOTIFY={Config.FORCE_NOTIFY} | NTFY_TOPIC={'set' if Config.NTFY_TOPIC else 'NOT SET'}")
     print("=" * 60)
 
