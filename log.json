@@ -16,5 +16,15 @@
     "error": null,
     "strategy": "cloudscraper",
     "force_notify": false
+  },
+  {
+    "timestamp": "2026-09-03T00:21:39.669049+00:00",
+    "status": "DOWN",
+    "detail": "Keyword detectado: 'Disabled' | Contexto: ...is blocked only when patchingDisabled is true.',       extensionCon...",
+    "html_hash": "6713d2be3799cd5a",
+    "notified": false,
+    "error": null,
+    "strategy": "cloudscraper",
+    "force_notify": false
   }
 ]
