@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-MONITOR UPLOAD120 PRO v3.2 - STRUCTURED DETECTION
+MONITOR UPLOAD120 PRO v3.3 - VALIDATED DETECTION
 ===================================================
-Sistema de monitoreo con 4 estrategias de bypass + deteccion estructurada.
+Sistema de monitoreo con 4 estrategias de bypass + validacion de contenido real.
 
-Cambios v3.2:
-- Deteccion basada en indicadores estructurados del HTML (no keywords sueltas)
-- Primario: pagina /status/ con data-status attribute
-- Secundario: popup de outage en pagina principal (clase 'hidden')
-- Fallback: keyword matching con regex preciso (sin falsos positivos)
-- cloudscraper como Estrategia 1 (mas efectiva contra Cloudflare)
+Cambios v3.3:
+- validate_content(): verifica que la respuesta sea la pagina real, no un challenge de Cloudflare
+- Cada estrategia valida su resultado antes de retornarlo
+- Si el contenido es challenge/vacio/demasiado corto, se descarta y prueba la siguiente estrategia
+- Deteccion estructurada: status page > outage popup > keyword fallback
+- Solo notifica cuando hay cambio real de estado o cuando TODAS las estrategias fallan
 
 Autor: Lyra | Fecha: 2026-09-02
 """
@@ -47,6 +47,21 @@ class Config:
     # Versiones de Chrome para curl_cffi
     CURL_CFFI_VERSIONS = ["chrome131", "chrome124", "chrome120", "chrome116", "chrome110"]
 
+    # Marcadores de Cloudflare challenge / interstitial
+    CLOUDFLARE_CHALLENGE_MARKERS = [
+        "just a moment", "cf-challenge", "challenge-platform",
+        "checking your browser", "__cf_bm", "cf-browser-verification",
+        "cf-mitigated", "attention required", "cloudflare",
+        "ray id", "_cf_chl", "cf-spinner-please-wait",
+        "enable javascript and cookies", "ddg-verify",
+    ]
+
+    # Tamano minimo aceptable (la pagina real es ~55K, un challenge suele ser <5K)
+    MIN_CONTENT_LENGTH = 3000
+
+    # Marcadores que DEBE contener la pagina real de Upload120
+    REAL_PAGE_MARKERS = ["upload120", "site-outage-popup", "data-status"]
+
     # Fallback: keywords precisas (sin palabras sueltas como 'down' o 'error')
     MAINTENANCE_KEYWORDS = [
         r'parcheado', r'parchado', r'metodo\s+actualiz\w*',
@@ -70,6 +85,58 @@ class Config:
         r'out\s+of\s+service',
         r'updating\s+(the\s+)?(service|server|site|method)',
     ]
+
+# ============ VALIDACION DE CONTENIDO ============
+
+def validate_content(html: str, url: str = "") -> bool:
+    """
+    Verifica que el contenido sea la pagina real de Upload120, no:
+    - Una pagina de Cloudflare challenge/interstitial
+    - Una pagina vacia
+    - Una respuesta demasiado corta
+    - Una pagina que no contiene los marcadores esperados
+    
+    LOGICA:
+    1. Si es None/vacio/demasiado corto -> invalido
+    2. Si contiene marcadores de la pagina real -> VALIDO (la pagina real puede
+       tener scripts de Cloudflare inyectados, eso es normal)
+    3. Si NO tiene marcadores reales Y tiene marcadores de challenge -> invalido
+    4. Si no tiene ningun marcador -> invalido (contenido desconocido)
+    
+    Retorna True si el contenido es valido, False si debe descartarse.
+    """
+    if html is None:
+        return False
+    
+    if not html.strip():
+        print(f"  [VALIDATE] Contenido vacio")
+        return False
+    
+    # 1. Verificar tamano minimo
+    if len(html) < Config.MIN_CONTENT_LENGTH:
+        print(f"  [VALIDATE] Contenido demasiado corto: {len(html)} chars (min: {Config.MIN_CONTENT_LENGTH})")
+        return False
+    
+    html_lower = html.lower()
+    
+    # 2. PRIMERO verificar marcadores de la pagina real.
+    # La pagina real de Upload120 contiene estos marcadores SI o SI.
+    # Si los tiene, es la pagina real - los scripts de Cloudflare inyectados
+    # (como challenge-platform) son normales y no indican un challenge.
+    found_real = [m for m in Config.REAL_PAGE_MARKERS if m.lower() in html_lower]
+    if len(found_real) >= 2:
+        print(f"  [VALIDATE] OK - {len(html)} chars, marcadores reales: {found_real[:3]}")
+        return True
+    
+    # 3. Si no tiene marcadores reales, verificar si es un challenge de Cloudflare
+    for marker in Config.CLOUDFLARE_CHALLENGE_MARKERS:
+        if marker in html_lower:
+            print(f"  [VALIDATE] Cloudflare challenge sin marcadores reales: '{marker}'")
+            return False
+    
+    # 4. No tiene marcadores reales ni de challenge - contenido desconocido
+    print(f"  [VALIDATE] Contenido sin marcadores conocidos ({len(html)} chars)")
+    return False
 
 # ============ UTILIDADES ============
 
@@ -131,18 +198,13 @@ def append_log(entry: dict):
 # ============ DETECCION STRUCTURADA ============
 
 def detect_via_status_page(html: str) -> Optional[Tuple[str, str]]:
-    """
-    Deteccion primaria: parsear la pagina /status/ en busca de data-status.
-    Retorna (status, detail) o None si no se puede determinar.
-    """
+    """Deteccion primaria: parsear /status/ con data-status attribute."""
     if not html or not html.strip():
         return None
 
-    # Buscar data-status attribute en el status card
     match = re.search(r'data-status=["\'](\w+)["\']', html, re.IGNORECASE)
     if match:
         status_val = match.group(1).lower()
-        # Extraer el texto del status title
         title_match = re.search(r'id=["\']statusTitle["\'][^>]*>([^<]+)', html, re.IGNORECASE)
         title_text = title_match.group(1).strip() if title_match else status_val
 
@@ -151,7 +213,6 @@ def detect_via_status_page(html: str) -> Optional[Tuple[str, str]]:
         elif status_val in ("down", "error", "outage", "maintenance", "degraded"):
             return "DOWN", f"Status page: {title_text}"
         else:
-            # Unknown status value, report it
             return "DOWN", f"Status page valor desconocido: data-status={status_val} | {title_text}"
 
     # Buscar data-state en los sistemas individuales
@@ -163,42 +224,27 @@ def detect_via_status_page(html: str) -> Optional[Tuple[str, str]]:
         elif len(states) > 0:
             return "UP", f"Todos los sistemas operational ({len(states)} checks)"
 
-    return None  # No se pudo determinar via status page
+    return None
 
 def detect_via_outage_popup(html: str) -> Optional[Tuple[str, str]]:
-    """
-    Deteccion secundaria: revisar el popup de outage en la pagina principal.
-    Si el div tiene clase 'hidden' -> UP. Si no tiene 'hidden' -> DOWN.
-    """
+    """Deteccion secundaria: popup de outage en pagina principal (clase 'hidden')."""
     if not html or not html.strip():
         return None
 
-    # Buscar el div del popup de outage
-    match = re.search(
-        r'class=["\']([^"\']*site-outage-popup[^"\']*)["\']',
-        html, re.IGNORECASE
-    )
+    match = re.search(r'class=["\']([^"\']*site-outage-popup[^"\']*)["\']', html, re.IGNORECASE)
     if match:
         classes = match.group(1).lower()
         if "hidden" in classes:
             return "UP", "Popup de outage oculto (hidden)"
         else:
-            # El popup es visible -> sitio DOWN
-            # Extraer el titulo del popup
-            title_match = re.search(
-                r'id=["\']siteOutagePopupTitle["\'][^>]*>([^<]+)',
-                html, re.IGNORECASE
-            )
+            title_match = re.search(r'id=["\']siteOutagePopupTitle["\'][^>]*>([^<]+)', html, re.IGNORECASE)
             title = title_match.group(1).strip() if title_match else "Popup visible"
             return "DOWN", f"Popup de outage visible: {title}"
 
-    return None  # No se encontro el popup
+    return None
 
 def detect_via_keywords(html: str) -> Tuple[str, str, Optional[str]]:
-    """
-    Deteccion fallback: keyword matching con regex preciso.
-    Solo se usa si los metodos estructurados no funcionan.
-    """
+    """Deteccion fallback: keyword matching con regex preciso."""
     if html is None:
         return "ERROR", "No se pudo obtener la pagina", None
     if not html.strip():
@@ -219,7 +265,7 @@ def detect(html: Optional[str], status_html: Optional[str] = None) -> Tuple[str,
     """
     Deteccion en cascada:
     1. Status page (data-status attribute)
-    2. Outage popup (hidden class)
+    2. Outage popup (hidden class) 
     3. Keyword fallback
     
     Retorna (status, detail, html_hash, detection_method)
@@ -250,7 +296,7 @@ def detect(html: Optional[str], status_html: Optional[str] = None) -> Tuple[str,
     print(f"[DETECT] Metodo: keyword_fallback | {status} | {detail}")
     return status, detail, html_hash, "keyword_fallback"
 
-# ============ ESTRATEGIAS DE FETCH ============
+# ============ ESTRATEGIAS DE FETCH CON VALIDACION ============
 
 def fetch_strategy_cloudscraper(url: str) -> Optional[str]:
     """cloudscraper - engine especifico para bypass de Cloudflare"""
@@ -265,7 +311,11 @@ def fetch_strategy_cloudscraper(url: str) -> Optional[str]:
         )
         resp = scraper.get(url, timeout=Config.TIMEOUT)
         resp.raise_for_status()
-        return resp.text
+        html = resp.text
+        # VALIDAR: no aceptar challenge pages como exito
+        if not validate_content(html, url):
+            return None
+        return html
     except Exception as e:
         print(f"  cloudscraper fallo: {e}")
         return None
@@ -280,7 +330,11 @@ def fetch_strategy_curl_cffi(url: str) -> Optional[str]:
         try:
             resp = curl_requests.get(url, impersonate=chrome_ver, timeout=Config.TIMEOUT, allow_redirects=True)
             resp.raise_for_status()
-            return resp.text
+            html = resp.text
+            # VALIDAR: no aceptar challenge pages como exito
+            if not validate_content(html, url):
+                continue  # Probar siguiente version de Chrome
+            return html
         except Exception as e:
             if "impersonate" in str(e).lower() or "version" in str(e).lower():
                 continue
@@ -308,7 +362,11 @@ def fetch_strategy_requests(url: str) -> Optional[str]:
     }
     resp = requests.get(url, headers=headers, timeout=Config.TIMEOUT, allow_redirects=True)
     resp.raise_for_status()
-    return resp.text
+    html = resp.text
+    # VALIDAR: no aceptar challenge pages como exito
+    if not validate_content(html, url):
+        return None
+    return html
 
 def fetch_strategy_jina(url: str) -> Optional[str]:
     """r.jina.ai - servicio proxy gratuito"""
@@ -316,10 +374,30 @@ def fetch_strategy_jina(url: str) -> Optional[str]:
     headers = {"User-Agent": Config.USER_AGENT, "Accept": "text/plain,*/*", "X-Return-Format": "text"}
     resp = requests.get(proxy_url, headers=headers, timeout=Config.TIMEOUT + 10, allow_redirects=True)
     resp.raise_for_status()
-    return resp.text
+    html = resp.text
+    # r.jina.ai devuelve texto plano, no HTML. Validar de forma mas relajada.
+    if not html or not html.strip():
+        print(f"  [VALIDATE] jina.ai: contenido vacio")
+        return None
+    if len(html) < 200:
+        print(f"  [VALIDATE] jina.ai: contenido demasiado corto: {len(html)} chars")
+        return None
+    # Verificar que mencione upload120
+    if "upload120" not in html.lower():
+        print(f"  [VALIDATE] jina.ai: no menciona upload120")
+        return None
+    print(f"  [VALIDATE] jina.ai OK - {len(html)} chars")
+    return html
 
 def fetch_url(url: str) -> Tuple[Optional[str], Optional[str]]:
-    """Intenta las 4 estrategias en cascada para una URL. Retorna (html, strategy_name)."""
+    """
+    Intenta las 4 estrategias en cascada para una URL.
+    Cada estrategia valida su contenido antes de retornarlo.
+    Si el contenido es invalido (challenge, vacio, sin marcadores),
+    se descarta y se prueba la siguiente estrategia.
+    
+    Retorna (html, strategy_name) o (None, None) si todas fallan.
+    """
     strategies = [
         ("cloudscraper", fetch_strategy_cloudscraper),
         ("curl_cffi", fetch_strategy_curl_cffi),
@@ -331,8 +409,10 @@ def fetch_url(url: str) -> Tuple[Optional[str], Optional[str]]:
             print(f"  Probando: {name}...")
             result = strategy(url)
             if result is not None:
-                print(f"  ✅ {name} OK ({len(result)} chars)")
+                print(f"  ✅ {name} OK ({len(result)} chars, contenido validado)")
                 return result, name
+            else:
+                print(f"  ⚠️ {name}: contenido invalido o fallo, probando siguiente...")
         except Exception as e:
             print(f"  ❌ {name} fallo: {e}")
             jitter_sleep(1.0, 3.0)
@@ -386,7 +466,7 @@ def notify_heartbeat(state: dict):
 
 def main():
     print("=" * 60)
-    print(f"[START] Upload120 Monitor Pro v3.2 - {now_iso()}")
+    print(f"[START] Upload120 Monitor Pro v3.3 - {now_iso()}")
     print(f"[CONFIG] FORCE_NOTIFY={Config.FORCE_NOTIFY} | NTFY_TOPIC={'set' if Config.NTFY_TOPIC else 'NOT SET'}")
     print("=" * 60)
 
@@ -398,23 +478,24 @@ def main():
     strategy_used = None
     detection_method = None
 
-    # 1. Obtener paginas (cascada de estrategias)
+    # 1. Obtener pagina principal (cascada de 4 estrategias con validacion)
     print("\n[FETCH] Obteniendo pagina principal...")
     try:
         main_html, strategy_used = fetch_url(Config.URL)
         if main_html:
             state["consecutive_errors"] = 0
             print(f"[FETCH] Pagina principal OK via {strategy_used}")
+        else:
+            raise Exception("Todas las estrategias fallaron o devolvieron contenido invalido")
     except Exception as e:
         error_msg = str(e)
         state["consecutive_errors"] += 1
         print(f"[ERROR] Pagina principal fallo: {e}")
 
-    # Intentar pagina de status tambien
+    # Intentar pagina de status con la misma estrategia que funciono
     if strategy_used:
-        print(f"\n[FETCH] Obteniendo pagina de status (probando misma estrategia: {strategy_used})...")
+        print(f"\n[FETCH] Obteniendo pagina de status (estrategia: {strategy_used})...")
         try:
-            # Usar la misma estrategia que funciono
             strategies_map = {
                 "cloudscraper": fetch_strategy_cloudscraper,
                 "curl_cffi": fetch_strategy_curl_cffi,
@@ -433,7 +514,7 @@ def main():
     print(f"\n[DETECT] Analizando...")
     status, detail, html_hash, detection_method = detect(main_html, status_html)
 
-    # 3. Comparar
+    # 3. Comparar con estado anterior
     status_changed = status != state["last_status"]
     print(f"\n[COMPARE] Cambio: {status_changed} | Anterior: {state['last_status']} | Actual: {status}")
 
@@ -449,7 +530,7 @@ def main():
     else:
         print("[DECISION] Sin cambios. Silencio.")
 
-    # 5. Notificar
+    # 5. Notificar cambio de estado
     if should_notify:
         try:
             notify_status_change(status, detail, strategy_used or "", detection_method or "")
@@ -458,16 +539,16 @@ def main():
         except Exception as e:
             print(f"[ERROR] Fallo al notificar: {e}")
 
-    # Error persistente
+    # 5b. Notificar errores consecutivos (independiente del cambio de estado)
     if error_msg and state["consecutive_errors"] >= 3:
-        print(f"[ALERT] {state['consecutive_errors']} errores consecutivos")
+        print(f"[ALERT] {state['consecutive_errors']} errores consecutivos - notificando")
         try:
-            notify_status_change("ERROR", f"Multiples fallos: {error_msg}")
+            notify_status_change("ERROR", f"Multiples fallos consecutivos ({state['consecutive_errors']}x): {error_msg}")
             notified = True
-        except:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Fallo al notificar error: {e}")
 
-    # 6. Heartbeat
+    # 6. Heartbeat cada 24 checks
     state["heartbeat_counter"] += 1
     if state["heartbeat_counter"] >= Config.HEARTBEAT_INTERVAL:
         print("[HEARTBEAT] Enviando...")
