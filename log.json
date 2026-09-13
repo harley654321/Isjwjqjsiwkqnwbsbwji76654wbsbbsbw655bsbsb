@@ -1,13 +1,5 @@
 [
   {
-    "timestamp": "2026-09-03T00:02:47.053400+00:00",
-    "status": "ERROR",
-    "detail": "No se pudo obtener la pagina",
-    "html_hash": null,
-    "notified": false,
-    "error": "403 Client Error: Forbidden for url: https://upload120.com/"
-  },
-  {
     "timestamp": "2026-09-03T00:20:34.349529+00:00",
     "status": "DOWN",
     "detail": "Keyword detectado: 'down'",
@@ -5488,6 +5480,17 @@
     "status": "UP",
     "detail": "Status page: All systems operational",
     "html_hash": "4f568b98b66a375b",
+    "notified": false,
+    "error": null,
+    "strategy": "cloudscraper",
+    "detection_method": "status_page",
+    "force_notify": false
+  },
+  {
+    "timestamp": "2026-09-13T07:30:18.002352+00:00",
+    "status": "UP",
+    "detail": "Status page: All systems operational",
+    "html_hash": "7eea1423fce7fb90",
     "notified": false,
     "error": null,
     "strategy": "cloudscraper",
