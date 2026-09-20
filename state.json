@@ -1,12 +1,12 @@
 {
-  "last_status": "UP",
-  "last_check_timestamp": "2026-09-20T00:00:26.850207+00:00",
-  "last_notify_timestamp": "2026-09-16T09:30:19.475484+00:00",
-  "total_checks": 822,
-  "total_changes": 5,
-  "consecutive_errors": 0,
-  "last_html_hash": "4651ca3476ddd17f",
-  "heartbeat_counter": 6,
-  "last_strategy_used": "cloudscraper",
-  "last_detection_method": "status_page"
+  "last_status": "ERROR",
+  "last_check_timestamp": "2026-09-20T00:30:29.504032+00:00",
+  "last_notify_timestamp": "2026-09-20T00:30:29.504011+00:00",
+  "total_checks": 823,
+  "total_changes": 6,
+  "consecutive_errors": 1,
+  "last_html_hash": null,
+  "heartbeat_counter": 7,
+  "last_strategy_used": null,
+  "last_detection_method": null
 }
