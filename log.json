@@ -1,16 +1,5 @@
 [
   {
-    "timestamp": "2026-09-15T07:30:35.836296+00:00",
-    "status": "UP",
-    "detail": "Status page: All systems operational",
-    "html_hash": "5d5915d043e95939",
-    "notified": false,
-    "error": null,
-    "strategy": "cloudscraper",
-    "detection_method": "status_page",
-    "force_notify": false
-  },
-  {
     "timestamp": "2026-09-15T08:00:22.440766+00:00",
     "status": "UP",
     "detail": "Status page: All systems operational",
@@ -5494,6 +5483,17 @@
     "detail": "Status page valor desconocido: data-status=working | Upload method not working.",
     "html_hash": "fc2f534fc84f5c54",
     "notified": true,
+    "error": null,
+    "strategy": "cloudscraper",
+    "detection_method": "status_page",
+    "force_notify": false
+  },
+  {
+    "timestamp": "2026-09-25T17:30:21.255678+00:00",
+    "status": "DOWN",
+    "detail": "Status page valor desconocido: data-status=working | Upload method not working.",
+    "html_hash": "afdad9ef63aea4b0",
+    "notified": false,
     "error": null,
     "strategy": "cloudscraper",
     "detection_method": "status_page",
