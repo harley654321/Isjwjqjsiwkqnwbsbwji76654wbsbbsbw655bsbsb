@@ -1,0 +1,36 @@
+services:
+  monitor:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
+      - FORCE_NOTIFY=${FORCE_NOTIFY:-false}
+    command: ["sh", "-ec", "pip install --no-cache-dir -r requirements.txt && echo '[monitor] installed deps' && while true; do echo '[monitor] running check...' ; python monitor.py ; echo '[monitor] sleeping 600s...' ; sleep 600 ; done"]
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/state.json') else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  web:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "3000:3000"
+    command: ["python", "dashboard.py"]
+    depends_on:
+      monitor:
+        condition: service_started
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
