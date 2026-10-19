@@ -1,16 +1,5 @@
 [
   {
-    "timestamp": "2026-10-09T08:30:18.964946+00:00",
-    "status": "UP",
-    "detail": "Status page: All systems operational",
-    "html_hash": "35a8c96a6726ed83",
-    "notified": false,
-    "error": null,
-    "strategy": "cloudscraper",
-    "detection_method": "status_page",
-    "force_notify": false
-  },
-  {
     "timestamp": "2026-10-09T09:00:22.485222+00:00",
     "status": "UP",
     "detail": "Status page: All systems operational",
@@ -5494,6 +5483,17 @@
     "detail": "Status page: Upload120 service status",
     "html_hash": "930f8fb71ae9a99d",
     "notified": true,
+    "error": null,
+    "strategy": "cloudscraper",
+    "detection_method": "status_page",
+    "force_notify": false
+  },
+  {
+    "timestamp": "2026-10-19T18:30:22.021285+00:00",
+    "status": "DOWN",
+    "detail": "Status page: Upload120 service status",
+    "html_hash": "a1e1b071357dc4bd",
+    "notified": false,
     "error": null,
     "strategy": "cloudscraper",
     "detection_method": "status_page",
