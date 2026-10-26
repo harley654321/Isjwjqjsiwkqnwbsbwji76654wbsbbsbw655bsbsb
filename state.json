@@ -1,12 +1,12 @@
 {
-  "last_status": "UP",
-  "last_check_timestamp": "2026-10-26T00:00:19.580191+00:00",
-  "last_notify_timestamp": "2026-10-20T07:00:18.908603+00:00",
-  "total_checks": 2548,
-  "total_changes": 23,
+  "last_status": "DOWN",
+  "last_check_timestamp": "2026-10-26T00:30:22.577611+00:00",
+  "last_notify_timestamp": "2026-10-26T00:30:22.577594+00:00",
+  "total_checks": 2549,
+  "total_changes": 24,
   "consecutive_errors": 0,
-  "last_html_hash": "e1043d7b4d6f26d7",
-  "heartbeat_counter": 4,
+  "last_html_hash": "782094c205ba40f7",
+  "heartbeat_counter": 5,
   "last_strategy_used": "cloudscraper",
   "last_detection_method": "status_page"
 }
