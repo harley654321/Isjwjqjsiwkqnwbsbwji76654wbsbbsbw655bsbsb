@@ -1,16 +1,5 @@
 [
   {
-    "timestamp": "2026-10-18T08:30:20.271609+00:00",
-    "status": "UP",
-    "detail": "Status page: All systems operational",
-    "html_hash": "810906ccf4700821",
-    "notified": false,
-    "error": null,
-    "strategy": "cloudscraper",
-    "detection_method": "status_page",
-    "force_notify": false
-  },
-  {
     "timestamp": "2026-10-18T09:00:23.349994+00:00",
     "status": "UP",
     "detail": "Status page: All systems operational",
@@ -5493,6 +5482,17 @@
     "status": "UP",
     "detail": "Status page: All systems operational",
     "html_hash": "56b1640e40254cee",
+    "notified": false,
+    "error": null,
+    "strategy": "cloudscraper",
+    "detection_method": "status_page",
+    "force_notify": false
+  },
+  {
+    "timestamp": "2026-10-28T19:00:25.097814+00:00",
+    "status": "UP",
+    "detail": "Status page: All systems operational",
+    "html_hash": "2519a82270669be4",
     "notified": false,
     "error": null,
     "strategy": "cloudscraper",
